@@ -22,14 +22,14 @@ class MultiwayNetwork(nn.Module):
         super(MultiwayNetwork, self).__init__()
 
         self.multiway = torch.nn.ModuleList([module_provider() for _ in range(num_multiway)])
-    
+
     def forward(self, hidden_states, multiway_indices):
 
         if len(self.multiway) == 1:
             return self.multiway[0](hidden_states)
 
         output_hidden_states = torch.empty_like(hidden_states)
-        
+
         for idx, subway in enumerate(self.multiway):
             local_indices = multiway_indices.eq(idx).nonzero(as_tuple=True)
             hidden = hidden_states[local_indices].unsqueeze(1).contiguous()
@@ -39,9 +39,9 @@ class MultiwayNetwork(nn.Module):
                     output = output[0]
                 output = output.squeeze(1)
                 output_hidden_states[local_indices] = output
-        
+
         return output_hidden_states.contiguous()
-    
+
 
 class LlamaAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
@@ -478,7 +478,7 @@ def replace_llama_modality_adaptive():
     transformers.models.llama.modeling_llama.LlamaModel.forward = model_forward
     transformers.models.llama.modeling_llama.LlamaForCausalLM.forward = causal_model_forward
 
-    
+
 if __name__ == "__main__":
     replace_llama_modality_adaptive()
     config = transformers.LlamaConfig.from_pretrained('/cpfs01/shared/public/test/vicuna-7b-v1.5/')

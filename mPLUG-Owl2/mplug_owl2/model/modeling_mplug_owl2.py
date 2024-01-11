@@ -37,7 +37,7 @@ class MPLUGOwl2MetaModel:
         self.visual_abstractor = MplugOwlVisualAbstractorModel(
             MplugOwlVisualAbstractorConfig(**config.visual_config["visual_abstractor"]), config.hidden_size
         )
-    
+
     def get_vision_tower(self):
         vision_model = getattr(self, 'vision_model', None)
         if type(vision_model) is list:
@@ -69,7 +69,7 @@ class MPLUGOwl2MetaForCausalLM(ABC):
                 attention_mask = torch.ones((attention_mask.shape[0], past_key_values[-1][-1].shape[-2] + 1), dtype=attention_mask.dtype, device=attention_mask.device)
             multiway_indices = torch.zeros_like(input_ids).long().to(self.device)
             return input_ids, multiway_indices, attention_mask, past_key_values, None, labels
-        
+
         if type(images) is list or images.ndim == 5:
             concat_images = torch.cat([image for image in images], dim=0)
             image_features = self.encode_images(concat_images)
@@ -93,7 +93,7 @@ class MPLUGOwl2MetaForCausalLM(ABC):
                 cur_input_embeds_2 = self.get_model().embed_tokens(cur_input_ids[half_len:])
                 cur_input_embeds = torch.cat([cur_input_embeds_1, cur_image_features[0:0], cur_input_embeds_2], dim=0)
                 new_input_embeds.append(cur_input_embeds)
-                
+
                 cur_modality_indicators = torch.zeros(len(cur_input_embeds)).long().to(self.device)
                 new_modality_indicators.append(cur_modality_indicators)
                 if labels is not None:
@@ -112,12 +112,12 @@ class MPLUGOwl2MetaForCausalLM(ABC):
                 image_token_start = image_token_indices[0]
                 cur_new_input_embeds.append(self.get_model().embed_tokens(cur_input_ids[:image_token_start]))
                 cur_new_input_embeds.append(cur_image_features)
-                
+
                 # Add modality indicator
                 assert image_token_start == len(cur_input_ids[:image_token_start])
                 cur_modality_indicators.append(torch.zeros(len(cur_input_ids[:image_token_start])).long())
                 cur_modality_indicators.append(torch.ones(len(cur_image_features)).long())
-                
+
                 if labels is not None:
                     cur_new_labels.append(cur_labels[:image_token_start])
                     cur_new_labels.append(torch.full((cur_image_features.shape[0],), IGNORE_INDEX, device=labels.device, dtype=labels.dtype))
@@ -133,34 +133,34 @@ class MPLUGOwl2MetaForCausalLM(ABC):
             cur_new_input_embeds = [x.to(device=self.device) for x in cur_new_input_embeds]
             cur_new_input_embeds = torch.cat(cur_new_input_embeds, dim=0)
             new_input_embeds.append(cur_new_input_embeds)
-            
+
             # Modality
             cur_modality_indicators = [x.to(device=self.device) for x in cur_modality_indicators]
             cur_modality_indicators = torch.cat(cur_modality_indicators, dim=0)
             new_modality_indicators.append(cur_modality_indicators)
-            
-            
+
+
             if labels is not None:
                 cur_new_labels = torch.cat(cur_new_labels, dim=0)
                 new_labels.append(cur_new_labels)
 
         if any(x.shape != new_input_embeds[0].shape for x in new_input_embeds):
             max_len = max(x.shape[0] for x in new_input_embeds)
-            
+
             # Embedding
             new_input_embeds_align = []
             for cur_new_embed in new_input_embeds:
                 cur_new_embed = torch.cat((cur_new_embed, torch.zeros((max_len - cur_new_embed.shape[0], cur_new_embed.shape[1]), dtype=cur_new_embed.dtype, device=cur_new_embed.device)), dim=0)
                 new_input_embeds_align.append(cur_new_embed)
             new_input_embeds = torch.stack(new_input_embeds_align, dim=0)
-            
+
             # Modality
             new_modality_indicators_align = []
             for cur_modality_indicator in new_modality_indicators:
                 cur_new_embed = torch.cat((cur_modality_indicator, torch.zeros(max_len - cur_modality_indicator.shape[0], dtype=cur_modality_indicator.dtype, device=cur_modality_indicator.device)), dim=0)
                 new_modality_indicators_align.append(cur_new_embed)
             new_modality_indicators = torch.stack(new_modality_indicators_align, dim=0)
-            
+
             # Label
             if labels is not None:
                 new_labels_align = []
@@ -169,7 +169,7 @@ class MPLUGOwl2MetaForCausalLM(ABC):
                     cur_new_label = torch.cat((cur_new_label, torch.full((max_len - cur_new_label.shape[0],), IGNORE_INDEX, dtype=cur_new_label.dtype, device=cur_new_label.device)), dim=0)
                     new_labels_align.append(cur_new_label)
                 new_labels = torch.stack(new_labels_align, dim=0)
-            
+
             # Attention Mask
             if attention_mask is not None:
                 new_attention_mask = []
@@ -311,19 +311,19 @@ if __name__ == "__main__":
     from icecream import ic
     # config = MPLUGOwl2Config()
     model =  MPLUGOwl2LlamaForCausalLM(config)
-    
+
     images = torch.randn(2, 3, 448, 448)
     input_ids = torch.cat([
         torch.ones(8).long(), torch.tensor([-1]*1).long(), torch.ones(8).long(), torch.tensor([-1]*1).long(), torch.ones(8).long()
     ], dim=0).unsqueeze(0)
     labels = input_ids.clone()
     labels[labels < 0] = -100
-    
+
     # image_feature = model.encode_images(images)
     # ic(image_feature.shape)
-    
+
     output = model(images=images, input_ids=input_ids, labels=labels)
     ic(output.loss)
     ic(output.logits.shape)
-    
+
     model.save_pretrained('/cpfs01/shared/public/test/tmp_owl')
