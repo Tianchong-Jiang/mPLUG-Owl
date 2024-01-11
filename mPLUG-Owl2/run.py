@@ -15,15 +15,16 @@ image_file = 'test.png' # Image Path
 model_path = '/models/mplug-owl2-llama2-7b/'
 query = "Describe the image."
 
+image = Image.open(image_file).convert('RGB')
+max_edge = max(image.size) # We recommand you to resize to squared image for BEST performance.
+image = image.resize((max_edge, max_edge))
+
 model_name = get_model_name_from_path(model_path)
 tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, None, model_name, load_8bit=False, load_4bit=False, device="cuda")
 
 conv = conv_templates["mplug_owl2"].copy()
 roles = conv.roles
 
-image = Image.open(image_file).convert('RGB')
-max_edge = max(image.size) # We recommand you to resize to squared image for BEST performance.
-image = image.resize((max_edge, max_edge))
 
 image_tensor = process_images([image], image_processor)
 image_tensor = image_tensor.to(model.device, dtype=torch.float16)
