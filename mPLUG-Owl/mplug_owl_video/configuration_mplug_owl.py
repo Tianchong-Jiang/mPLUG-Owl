@@ -15,12 +15,14 @@
 """ MplugOwl model configuration """
 import copy
 import os
-from typing import Union
+from typing import Union, Dict, Any
 
 from transformers.configuration_utils import PretrainedConfig
 from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.utils import logging
 from transformers.models.auto import CONFIG_MAPPING
+
+from transformers.configuration_utils import recursive_diff_dict
 
 
 logger = logging.get_logger(__name__)
@@ -29,7 +31,6 @@ MPLUG_OWL_PRETRAINED_CONFIG_ARCHIVE_MAP = {
     "MAGAer13/mplug-owl-llama-7b": "https://huggingface.co/MAGAer13/mplug-owl-llama-7b/resolve/main/config.json",
     # See all MplugOwl models at https://huggingface.co/models?filter=mplug_owl
 }
-
 
 class MplugOwlVisionConfig(PretrainedConfig):
     r"""
@@ -294,3 +295,66 @@ class MplugOwlConfig(PretrainedConfig):
         output["text_config"] = self.text_config.to_dict()
         output["model_type"] = self.__class__.model_type
         return output
+
+
+    """Tianchong: This function is used to solve the error
+    TypeError: Object of type method is not JSON serializable
+    It is adopted from
+    https://github.com/LukeForeverYoung/UReader/issues/2.
+    """
+    def to_diff_dict(self) -> Dict[str, Any]:
+        """
+        Removes all attributes from config which correspond to the default config attributes for better readability and
+        serializes to a Python dictionary.
+
+        Returns:
+            `Dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance,
+        """
+        config_dict = self.to_dict()
+
+        # get the default config dict
+        default_config_dict = PretrainedConfig().to_dict()
+
+        # get class specific config dict
+        class_config_dict = self.__class__().to_dict() if not self.is_composition else {}
+
+        serializable_config_dict = {}
+
+        # only serialize values that differ from the default config
+        for key, value in config_dict.items():
+            if (
+                isinstance(getattr(self, key, None), PretrainedConfig)
+                and key in class_config_dict
+                and isinstance(class_config_dict[key], dict)
+            ):
+                # For nested configs we need to clean the diff recursively
+                diff = recursive_diff_dict(value, class_config_dict[key], config_obj=getattr(self, key, None))
+                if "model_type" in value:
+                    # Needs to be set even if it's not in the diff
+                    diff["model_type"] = value["model_type"]
+                if len(diff) > 0:
+                    serializable_config_dict[key] = diff
+            elif callable(value):
+                # We ignore function parameters
+                continue
+            elif (
+                key not in default_config_dict
+                or key == "transformers_version"
+                or value != default_config_dict[key]
+                or (key in class_config_dict and value != class_config_dict[key])
+            ):
+                serializable_config_dict[key] = value
+
+        if hasattr(self, "quantization_config"):
+            serializable_config_dict["quantization_config"] = (
+                self.quantization_config.to_dict()
+                if not isinstance(self.quantization_config, dict)
+                else self.quantization_config
+            )
+
+        self.dict_torch_dtype_to_str(serializable_config_dict)
+
+        if "_flash_attn_2_enabled" in serializable_config_dict:
+            del serializable_config_dict["_flash_attn_2_enabled"]
+
+        return serializable_config_dict
