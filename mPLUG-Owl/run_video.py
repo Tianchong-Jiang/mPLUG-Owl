@@ -9,9 +9,11 @@ from transformers import AutoTokenizer
 from mplug_owl_video.processing_mplug_owl import MplugOwlImageProcessor, MplugOwlProcessor
 
 pretrained_ckpt = '/mount/mplug-owl-llama-7b-video'
+
 model = MplugOwlForConditionalGeneration.from_pretrained(
     pretrained_ckpt,
     torch_dtype=torch.bfloat16,
+    device_map={'': 0} # https://github.com/X-PLUG/mPLUG-Owl/issues/100#issuecomment-1622830827
 )
 image_processor = MplugOwlImageProcessor.from_pretrained(pretrained_ckpt)
 tokenizer = AutoTokenizer.from_pretrained(pretrained_ckpt)
