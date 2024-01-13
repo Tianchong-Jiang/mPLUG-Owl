@@ -51,14 +51,15 @@
             "mode": "slurm-sing",
             "mount": [],
             "mount_from_host": {
-                "/share/data/ripl/tc/mplug": "/models",
+                "/share/data/ripl/tc/mplug": "/mount",
             },
             "singularity": {
                 "sif_file": "/share/data/ripl/tc/mplug/mplug.sif",
+                "env_from_host": ["CUDA_VISIBLE_DEVICES"],
                 "writable_tmpfs": true
             },
             "slurm": {
-                "exclude": "gpu0,gpu18,gpu2,gpu16,gpu13",
+                // "exclude": "gpu0,gpu18,gpu2,gpu16,gpu13",
                 "constraint": "48g",
             }
         }

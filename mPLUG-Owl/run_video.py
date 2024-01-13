@@ -27,8 +27,9 @@ processor = MplugOwlProcessor(image_processor, tokenizer)
 # Human: Describe the image
 # AI: ''']
 
-prompts = [
-'''Human: Can you describe the video?
+prompts = [ '''The following is a conversation between a curious human and AI assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.
+Human: <|video|>
+Human: Can you describe the video?
 AI: ''']
 
 video_list = ['/mount/data/video_20sec.mp4']

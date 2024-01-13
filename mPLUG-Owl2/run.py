@@ -11,8 +11,8 @@ from mplug_owl2.conversation import conv_templates, SeparatorStyle
 from mplug_owl2.model.builder import load_pretrained_model
 from mplug_owl2.mm_utils import process_images, tokenizer_image_token, get_model_name_from_path, KeywordsStoppingCriteria
 
-image_file = 'test.png' # Image Path
-model_path = '/models/mplug-owl2-llama2-7b/'
+image_file = 'inputs/test.png' # Image Path
+model_path = '/mount/mplug-owl2-llama2-7b/'
 query = "Describe the image."
 
 image = Image.open(image_file).convert('RGB')
