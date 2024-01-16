@@ -190,7 +190,7 @@ class MplugOwlVisionLocalTemporal(nn.Module):
         self.num_patches = 1 + (self.image_size // self.patch_size) ** 2
         self.hidden_size = config.hidden_size
         d_bottleneck = self.hidden_size // 2
-        
+
         self.ln = LayerNormFp32(self.hidden_size)
         self.down_proj = nn.Conv3d(self.hidden_size, d_bottleneck, kernel_size=1, stride=1, padding=0)
         self.conv = nn.Conv3d(d_bottleneck, d_bottleneck, kernel_size=(3, 1, 1), stride=1, padding=(1, 0, 0), groups=d_bottleneck)
@@ -204,7 +204,7 @@ class MplugOwlVisionLocalTemporal(nn.Module):
     def forward(self, x):
         # [b, t, s, c]
         T = x.size(1)
-        H = int((self.num_patches - 1)**0.5) 
+        H = int((self.num_patches - 1)**0.5)
         cls_token, x = x[:, :, 0:1], x[:, :, 1:]
         x = self.ln(x)
         x = einops.rearrange(x, 'b t (h w) c -> b c t h w', h=H)
@@ -370,7 +370,7 @@ class MplugOwlVisionEncoderLayer(nn.Module):
         if T > 1:
             hidden_states = hidden_states + self.temporal(hidden_states)
         hidden_states = einops.rearrange(hidden_states, 'b t n d -> (b t) n d')
-        
+
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
@@ -1107,7 +1107,7 @@ class MplugOwlVisualAbstractorModel(MplugOwlPreTrainedModel):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        
+
         T = encoder_hidden_states.size(1)
         if T == 1 or temporal_query_embeds is None:
             embedding_output = query_embeds
@@ -1758,6 +1758,130 @@ class MplugOwlForConditionalGeneration(MplugOwlPreTrainedModel):
 
         return outputs
 
+    @torch.no_grad()
+    def get_input_perplexity(
+        self,
+        pixel_values: torch.FloatTensor = None,
+        video_pixel_values: torch.FloatTensor = None,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.LongTensor] = None,
+        isdecoder=True,
+        **generate_kwargs,
+    ) -> torch.LongTensor:
+
+        """
+        Get perplexity of the input text given video
+
+        Args:
+            pixel_values (`torch.FloatTensor` of shape (batch_size, num_channels, height, width)):
+                Input images to be processed.
+            input_ids (`torch.LongTensor` of shape (batch_size, sequence_length), *optional*):
+                The sequence used as a prompt for the generation.
+            attention_mask (`torch.LongTensor` of shape (batch_size, sequence_length), *optional*):
+                Mask to avoid performing attention on padding token indices
+
+        Returns:
+            captions (list): A list of strings of length batch_size * num_captions.
+        """
+
+        if attention_mask is None:
+            attention_mask = input_ids.new_ones(*input_ids.shape)
+
+        batch_size = input_ids.size(0)
+        media_token_indices = [get_media_indices(input_ids[i]) for i in range(batch_size)]
+        media_token_types = [
+            get_media_types(input_ids[i], media_token_indices[i])
+            for i in range(batch_size)
+        ]
+        num_videos_per_sample = [len([y for y in x if y<-1]) for x in media_token_types]
+        input_ids = input_ids.clone()  # prevent inplace modify
+        input_ids[input_ids < 0] = 0  # Not used
+
+        if hasattr(self, "hf_device_map"):
+            # preprocess for `accelerate`
+            self._preprocess_accelerate()
+        batch_size = input_ids.shape[0]
+
+        # get text embedding
+        inputs_embeds = self.get_input_embeddings()(input_ids)
+        if hasattr(self.language_model, 'transformer') and hasattr(self.language_model.transformer, 'word_embeddings_layernorm'):
+            inputs_embeds = self.language_model.transformer.word_embeddings_layernorm(inputs_embeds)
+
+        if video_pixel_values is not None:
+            video_pixel_values = video_pixel_values.to(input_ids.device)
+            with torch.no_grad():
+                video_embeds = self.vision_model(video_pixel_values, return_dict=True).last_hidden_state
+                video_attention_mask = torch.ones(
+                    video_embeds.size()[:-1], dtype=torch.long, device=video_embeds.device
+                )
+                video_attention_mask = einops.rearrange(
+                    video_attention_mask, 'b t n -> b (t n)'
+                )
+                query_tokens = self.query_tokens.expand(video_embeds.shape[0], -1, -1)
+                temporal_query_tokens = self.temporal_query_tokens.expand(video_embeds.shape[0], -1, -1)
+                query_outputs = self.abstractor(
+                    query_embeds=query_tokens,
+                    temporal_query_embeds=temporal_query_tokens,
+                    encoder_hidden_states=video_embeds,
+                    encoder_attention_mask=video_attention_mask,
+                    return_dict=True,
+                )
+                query_output = query_outputs["last_hidden_state"]
+                video_embeds = query_output
+            vid_seq_length = video_embeds.shape[1]
+
+        # ===================
+        # Get actual input embeddings
+        # ===================
+        text_chunk_embeds = []
+        text_chunk_attns = []
+        img_idx = 0
+        vid_idx = 0
+
+        for b in range(batch_size):
+            start = 0
+            result = []
+            result_attn = []
+            for i, pos in enumerate(media_token_indices[b]):
+                curr_video_idx = 0
+                if pos > start:
+                    result.append(inputs_embeds[b, start:pos])
+                    result_attn.append(attention_mask[b, start:pos])
+                else:
+                    result.append(video_embeds[vid_idx + curr_video_idx])
+                    result_attn.append(torch.ones(video_embeds[img_idx + curr_video_idx].shape[0], device=inputs_embeds.device))
+                    start = pos + vid_seq_length
+                    curr_video_idx += 1
+            if start < inputs_embeds.shape[1]:
+                result.append(inputs_embeds[b, start:])
+                result_attn.append(attention_mask[b, start:])
+
+            vid_idx += num_videos_per_sample[b]
+            text_chunk_embeds.append(torch.cat(result, dim=0))
+            text_chunk_attns.append(torch.cat(result_attn, dim=0))
+        inputs_embeds = torch.stack(text_chunk_embeds, dim=0)
+        attention_mask = torch.stack(text_chunk_attns, dim=0)
+
+        # pad target_ids
+        target_ids = torch.nn.functional.pad(input_ids, (inputs_embeds.shape[1] - input_ids.shape[1], 0), value=-100)
+
+        outputs = self.language_model(
+            inputs_embeds=inputs_embeds[:, :-1],
+            labels=target_ids[:, 1:],
+            attention_mask=attention_mask[:, :-1],
+            return_dict=True)
+
+        logits = outputs.logits
+        last_logits = logits[:, -1, :]
+
+        # Calculate cross entropy loss for the actual last word
+        loss_func = torch.nn.CrossEntropyLoss(reduction='none')
+        loss = loss_func(last_logits.view(-1, last_logits.size(-1)), input_ids[:, -1].view(-1))
+
+        ppl = torch.exp(loss)
+
+        return ppl
+
     def prepare_inputs_for_generation(
         self, input_ids, pixel_values=None, video_pixel_values=None,
         past_key_values=None, attention_mask=None, **model_kwargs
@@ -1834,7 +1958,7 @@ def bloom_forward(
     if inputs_embeds is None:
         inputs_embeds = self.word_embeddings(input_ids)
         inputs_embeds = self.word_embeddings_layernorm(inputs_embeds)
-    
+
     hidden_states = inputs_embeds
 
     presents = () if use_cache else None
