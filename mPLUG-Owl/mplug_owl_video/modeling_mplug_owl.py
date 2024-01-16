@@ -1801,7 +1801,6 @@ class MplugOwlForConditionalGeneration(MplugOwlPreTrainedModel):
             # preprocess for `accelerate`
             self._preprocess_accelerate()
         batch_size = input_ids.shape[0]
-
         # get text embedding
         inputs_embeds = self.get_input_embeddings()(input_ids)
         if hasattr(self.language_model, 'transformer') and hasattr(self.language_model.transformer, 'word_embeddings_layernorm'):
@@ -1847,11 +1846,10 @@ class MplugOwlForConditionalGeneration(MplugOwlPreTrainedModel):
                 if pos > start:
                     result.append(inputs_embeds[b, start:pos])
                     result_attn.append(attention_mask[b, start:pos])
-                else:
-                    result.append(video_embeds[vid_idx + curr_video_idx])
-                    result_attn.append(torch.ones(video_embeds[img_idx + curr_video_idx].shape[0], device=inputs_embeds.device))
-                    start = pos + vid_seq_length
-                    curr_video_idx += 1
+                result.append(video_embeds[vid_idx + curr_video_idx])
+                result_attn.append(torch.ones(video_embeds[img_idx + curr_video_idx].shape[0], device=inputs_embeds.device))
+                start = pos + vid_seq_length
+                curr_video_idx += 1
             if start < inputs_embeds.shape[1]:
                 result.append(inputs_embeds[b, start:])
                 result_attn.append(attention_mask[b, start:])
@@ -1862,16 +1860,10 @@ class MplugOwlForConditionalGeneration(MplugOwlPreTrainedModel):
         inputs_embeds = torch.stack(text_chunk_embeds, dim=0)
         attention_mask = torch.stack(text_chunk_attns, dim=0)
 
-        # pad target_ids
-        target_ids = torch.nn.functional.pad(input_ids, (inputs_embeds.shape[1] - input_ids.shape[1], 0), value=-100)
-
         outputs = self.language_model(
             inputs_embeds=inputs_embeds[:, :-1],
-            labels=target_ids[:, 1:],
-            # attention_mask=attention_mask[:, :-1],
+            attention_mask=attention_mask[:, :-1],
             return_dict=True)
-
-        import pdb; pdb.set_trace()
 
         logits = outputs.logits
         last_logits = logits[:, -1, :]

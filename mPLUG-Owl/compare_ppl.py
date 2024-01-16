@@ -18,49 +18,59 @@ image_processor = MplugOwlImageProcessor.from_pretrained(pretrained_ckpt)
 tokenizer = AutoTokenizer.from_pretrained(pretrained_ckpt)
 processor = MplugOwlProcessor(image_processor, tokenizer)
 
-# We use a human/AI template to organize the context as a multi-turn conversation.
-# <|video|> denotes an video placehold.
-# prompts = [
-# '''
-# The following is an image of a interior of a room.
-# Human: Describe the image
-# AI: ''']
+generate_kwargs = {
+    'do_sample': True,
+    'top_k': 5,
+    'max_length': 512
+}
 
-prompt = '''The following is a conversation between a curious human and AI assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.
-Human: <|video|>
-Human: Can you describe the video?
-AI: '''
+def run(outputs, video_list):
+    # We use a human/AI template to organize the context as a multi-turn conversation.
+    # <|video|> denotes an video placehold.
+    # prompts = [
+    # '''
+    # The following is an image of a interior of a room.
+    # Human: Describe the image
+    # AI: ''']
 
-outputs = [
-'''The video shows an robot opening a microwave oven.''',
-'''The video shows a human opening a microwave oven.''',
-'''The video shows an robot opening a refrigerator door.''',
-'''The video shows an robot making a beef burger.''',
-'''The video shows cats playing with a toy.'''
-]
+    prompt = '''The following is a conversation between a curious human and AI assistant. The assistant gives helpful, detailed, and polite answers to the user's questions.
+    Human: <|video|>
+    Human: Can you describe the video?
+    AI: '''
+
+    texts = [prompt + outputs[i] for i in range(len(outputs))]
+
+    inputs = processor(text=texts, videos=video_list, num_frames=100, return_tensors='pt')
+    inputs = {k: v.bfloat16() if v.dtype == torch.float else v for k, v in inputs.items()}
+    inputs = {k: v.to(model.device) for k, v in inputs.items()}
+    with torch.no_grad():
+        ppl = model.get_input_perplexity(**inputs)
+        # ppl = model.generate(**inputs, **generate_kwargs)
+
+    return ppl
 
 # outputs = [
-# '''The video shows an robot turnning on a light.''',
-# '''The video shows a human opening a microwave oven.''',
-# '''The video shows an robot opening a refrigerator door.''',
-# '''The video shows an robot making a beef burger.''',
-# '''The video shows cats playing with a toy.'''
+# '''The scene shows a robot opening a microwave oven.''',
+# '''The scene shows a human opening a microwave oven.''',
+# '''The scene shows a robot opening a refrigerator door.''',
+# '''The scene shows a robot making a beef burger.''',
+# '''The scene shows cats playing with a toy.'''
 # ]
 
-
-
-texts = [prompt + outputs[i] for i in range(len(outputs))]
+outputs = [
+'''The scene shows a robot turning on a light.''',
+'''The scene shows a human opening a microwave oven.''',
+'''The scene shows a robot opening a refrigerator door.''',
+'''The scene shows a robot making a beef burger.''',
+'''The scene shows cats playing with a toy.'''
+]
 
 # video_list = ['/mount/data/franka_videos/opening_microwave_oven.mp4'] * 5
 video_list = ['/mount/data/franka_videos/turning_on_light.mp4'] * 5
+# video_list = ['/mount/data/video_20sec.mp4'] * 5
 
-print(video_list)
+ppl = run(outputs, video_list)
 
-inputs = processor(text=texts, videos=video_list, num_frames=100, return_tensors='pt')
-# inputs["video_pixel_values"] = inputs["video_pixel_values"][:, :, :4]
-inputs = {k: v.bfloat16() if v.dtype == torch.float else v for k, v in inputs.items()}
-inputs = {k: v.to(model.device) for k, v in inputs.items()}
-with torch.no_grad():
-    ppl = model.get_input_perplexity(**inputs)
-
-print(ppl)
+# print sentences with their perplexity
+for i in range(len(outputs)):
+    print(outputs[i] + "   PPL:" + str(ppl[i].item()))
