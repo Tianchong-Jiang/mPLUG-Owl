@@ -32,7 +32,8 @@ Human: <|video|>
 Human: Can you describe the video?
 AI: ''']
 
-video_list = ['/mount/data/video_20sec.mp4']
+# video_list = ['/mount/data/franka_videos/opening_microwave_oven.mp4']
+video_list = ['/mount/data/franka_videos/turning_on_light.mp4']
 
 # generate kwargs (the same in transformers) can be passed in the do_generate()
 generate_kwargs = {
@@ -41,7 +42,7 @@ generate_kwargs = {
     'max_length': 512
 }
 inputs = processor(text=prompts, videos=video_list, num_frames=100, return_tensors='pt')
-inputs["video_pixel_values"] = inputs["video_pixel_values"][:, :, :4]
+# inputs["video_pixel_values"] = inputs["video_pixel_values"][:, :, :4]
 inputs = {k: v.bfloat16() if v.dtype == torch.float else v for k, v in inputs.items()}
 inputs = {k: v.to(model.device) for k, v in inputs.items()}
 with torch.no_grad():

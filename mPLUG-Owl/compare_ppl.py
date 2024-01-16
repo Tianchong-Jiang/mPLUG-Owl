@@ -32,23 +32,32 @@ Human: Can you describe the video?
 AI: '''
 
 outputs = [
-'''The image is a close-up of a wooden kitchen table set with a variety of items placed on it.''',
-'''The image is a close-up of a wooden bedroom table set with a variety of items placed on it.''',
-'''The image is a close-up of a wooden kitchen table set with a variety of computers placed on it.''',
-'''The image is a close-up of a large lab computer set with a variety of items placed on it.''',
-'''11111111111111111111111111111111''',
-# '''The image is a close-up of a wooden kitchen table set with a variety of items placed on it. There are three cups, a bowl, a bottle, a knife, and a spoon. A cake is placed at the center of the table, and a vase is positioned on the right side. A clock is visible in the background, adding a touch of realism.
-# In addition to the tableware, there is a potted plant situated on the left side of the scene. The overall arrangement of the items conveys the sense of a casual, everyday setting.'''
+'''The video shows an robot opening a microwave oven.''',
+'''The video shows a human opening a microwave oven.''',
+'''The video shows an robot opening a refrigerator door.''',
+'''The video shows an robot making a beef burger.''',
+'''The video shows cats playing with a toy.'''
 ]
+
+# outputs = [
+# '''The video shows an robot turnning on a light.''',
+# '''The video shows a human opening a microwave oven.''',
+# '''The video shows an robot opening a refrigerator door.''',
+# '''The video shows an robot making a beef burger.''',
+# '''The video shows cats playing with a toy.'''
+# ]
 
 
 
 texts = [prompt + outputs[i] for i in range(len(outputs))]
 
-video_list = ['/mount/data/video_20sec.mp4']
+# video_list = ['/mount/data/franka_videos/opening_microwave_oven.mp4'] * 5
+video_list = ['/mount/data/franka_videos/turning_on_light.mp4'] * 5
+
+print(video_list)
 
 inputs = processor(text=texts, videos=video_list, num_frames=100, return_tensors='pt')
-inputs["video_pixel_values"] = inputs["video_pixel_values"][:, :, :4]
+# inputs["video_pixel_values"] = inputs["video_pixel_values"][:, :, :4]
 inputs = {k: v.bfloat16() if v.dtype == torch.float else v for k, v in inputs.items()}
 inputs = {k: v.to(model.device) for k, v in inputs.items()}
 with torch.no_grad():

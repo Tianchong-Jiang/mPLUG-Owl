@@ -1868,8 +1868,10 @@ class MplugOwlForConditionalGeneration(MplugOwlPreTrainedModel):
         outputs = self.language_model(
             inputs_embeds=inputs_embeds[:, :-1],
             labels=target_ids[:, 1:],
-            attention_mask=attention_mask[:, :-1],
+            # attention_mask=attention_mask[:, :-1],
             return_dict=True)
+
+        import pdb; pdb.set_trace()
 
         logits = outputs.logits
         last_logits = logits[:, -1, :]
