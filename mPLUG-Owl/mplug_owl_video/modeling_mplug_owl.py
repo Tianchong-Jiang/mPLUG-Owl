@@ -1865,16 +1865,21 @@ class MplugOwlForConditionalGeneration(MplugOwlPreTrainedModel):
             attention_mask=attention_mask[:, :-1],
             return_dict=True)
 
-        logits = outputs.logits
-        last_logits = logits[:, -1, :]
+        # Last input contains only the prompt, this tells us where the first answer token is
+        answer_start_loc = int(torch.sum(attention_mask[-1]) - 1)
 
-        # Calculate cross entropy loss for the actual last word
-        loss_func = torch.nn.CrossEntropyLoss(reduction='none')
-        loss = loss_func(last_logits.view(-1, last_logits.size(-1)), input_ids[:, -1].view(-1))
+        loss_func = torch.nn.CrossEntropyLoss()
+        losses = []
+        for i in range(batch_size):
+            answer_end_loc = int(torch.sum(attention_mask[i]))
+            logits = outputs.logits[i, answer_start_loc:answer_end_loc-1]
+            labels = input_ids[i, answer_start_loc+1:answer_end_loc]
+            losses.append(loss_func(logits, labels))
 
-        ppl = torch.exp(loss)
+        losses = torch.stack(losses, dim=0)
+        pp = torch.exp(losses)
 
-        return ppl
+        return pp
 
     def prepare_inputs_for_generation(
         self, input_ids, pixel_values=None, video_pixel_values=None,

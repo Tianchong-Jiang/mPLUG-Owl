@@ -33,8 +33,9 @@ Human: Can you describe the video?
 AI: ''']
 
 # video_list = ['/mount/data/franka_videos/opening_microwave_oven.mp4'] * 5
-video_list = ['/mount/data/franka_videos/turning_on_light.mp4'] * 5
+# video_list = ['/mount/data/franka_videos/turning_on_light.mp4'] * 5
 # video_list = ['/mount/data/video_20sec.mp4'] * 5
+video_list = ['/mount/data/metadrive_videos/switch_right.mp4']
 
 # generate kwargs (the same in transformers) can be passed in the do_generate()
 generate_kwargs = {
